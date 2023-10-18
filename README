@@ -1,0 +1,26 @@
+cel_util
+
+Utilities for verifying Canonical Event Log (CEL) formatted measurement lists.
+These tools are intended for Linux systems running the new sdboot with UKI
+support. The tools can verify the new sdboot stub and systemd events for
+these systems. The tools include:
+
+    pcclient_to_cel: translates pcclient measurement lists to CEL
+    systemd_to_cel: translates the new systemd journal events to CEL
+    ima-ng_to_cel: translates IMA binary events to CEL
+    cel_verify: verifies a CEL event log
+    verify: a front end script to demonstrate common usage of the utilities
+    
+Compiling:
+    Install dependencies, including openssl-devel, systemd-devel tpm2-tss-devel,
+    and the "C Development Tools and Libraries" group
+                                    
+    make
+    
+Usage:  cel_verify [-v] [-p pcrs.bin] [-h RIM.txt]
+    The script "verify" shows a typical usage sequence.
+    The script gets measurement logs from the normal locations, translates
+    them to CEL, and verifies them with cel_verify. Verify demonstrates
+    creation of a pcrbin file using tpm2_pcrread. An example RIM.txt file
+    is included. You can obtain the necessary hashes and descriptions from
+    a verbose cel_verify output.

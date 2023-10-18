@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# Example use of cel_util programs
+#
+cat /sys/kernel/security/tpm0/binary_bios_measurements | ./pcclient_to_cel > pc.cel
+./systemd_to_cel > systemd.cel
+tpm2_pcrread -o pcrs.bin sha256 >& /dev/null
+cat pc.cel systemd.cel ima.cel | ./cel_verify -p pcrs.bin -h RIM.txt
