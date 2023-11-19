@@ -112,7 +112,7 @@ void verify_pcclient_content(struct record *r) {
 		if (tmp->t == PCCLIENT_EVENT_CONTENT) {
 		        if (verify_sha256(r->sha256, tmp->v, tmp->l) == 0)
 		                r->verified_digests = 1;
-		        else if ((i = verify_by_rim(r->sha256)) >= 0)
+		        if ((i = verify_by_rim(r->sha256)) >= 0)
 		                r-> verified_rim = i;
 		}
 		pos += tmp->l + 5;
