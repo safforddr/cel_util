@@ -4,6 +4,6 @@
 #
 cat /sys/kernel/security/tpm0/binary_bios_measurements | ./pcclient_to_cel > pc.cel
 cat /sys/kernel/security/ima/binary_runtime_measurements | ./ima-ng_to_cel > ima.cel
-./systemd_to_cel > systemd.cel
+cat /run/log/systemd/tpm2-measure.log | ./systemd_log_to_cel > systemd.cel
 tpm2_pcrread -o pcrs.bin sha256 >& /dev/null
 cat pc.cel systemd.cel ima.cel | ./cel_verify -p pcrs.bin -h RIM.txt
