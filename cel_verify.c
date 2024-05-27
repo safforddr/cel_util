@@ -147,17 +147,45 @@ static void extend_sha1(uint8_t *pcr, uint8_t *v, int l)
 	EVP_MD_CTX_free(mdctx);		
 }
 
-static void calc_pcrs(struct record *r,
+static int is_ima_violation(uint8_t t, uint8_t *v, int l) {
+        int i;
+        if(t != CEL_CONTENT_IMA_TEMPLATE)
+                return 0;
+                
+        /* check for IMA measurement violation (all zero) */
+	for (i=0; i < l; i++) {
+		if (v[i])
+			return 0;
+        }
+        return 1;
+}
+
+static void update_pcrs(struct record *r,
 		      uint8_t pcr_sha1[NUM_PCRS][MAX_DATA_HASH],
 		      uint8_t pcr_sha256[NUM_PCRS][MAX_DATA_HASH])
 {
 	int pcr;
+        uint8_t ed[SHA256_HASH_LEN];
+        memset(ed, 0xff, SHA256_HASH_LEN);  //effective digest for ima violation
 
 	pcr = ntohl(*(uint32_t *)(r->pcr->v));
-	if (r->have_sha256)
-	        extend_sha256(pcr_sha256[pcr], r->sha256, SHA256_HASH_LEN);
-	if (r->have_sha1)
-	        extend_sha1(pcr_sha1[pcr], r->sha1, SHA1_HASH_LEN);
+	if (r->have_sha256) {
+	        if (is_ima_violation(r->content->t, r->sha256, SHA256_HASH_LEN))
+	                extend_sha256(pcr_sha256[pcr], ed, SHA256_HASH_LEN);
+	        else
+	                extend_sha256(pcr_sha256[pcr], r->sha256, SHA256_HASH_LEN);
+	}
+	if (r->have_sha1) {
+		if (is_ima_violation(r->content->t, r->sha256, SHA256_HASH_LEN))
+		        extend_sha1(pcr_sha1[pcr], ed, SHA1_HASH_LEN);
+		else
+	                extend_sha1(pcr_sha1[pcr], r->sha1, SHA1_HASH_LEN);
+	}
+	//if (pcr == 10) {
+	//        printf("PCR-10 is now ");
+	//        hexdump(pcr_sha256[pcr], SHA256_HASH_LEN);
+	//        printf("\n");
+	//}
 }
 
 void hexdump(uint8_t *b, int l)
@@ -287,6 +315,8 @@ static void display_record(struct record *r)
 	        printf("Verified by digest ");
 	if (r->verified_rim >= 0)
 	        printf("Verified by RIM %s ", rims[r->verified_rim].name);
+	if (r->verified_imasig)
+	        printf("verified by ima-sig ");
 	printf("\n");
 	if (verbose)
 	        printf("\n");
@@ -418,7 +448,7 @@ int main(int argc, char *argv[])
 	static uint8_t pcr_sha256[NUM_PCRS][MAX_DATA_HASH];
 	static uint8_t pcrs[NUM_PCRS * SHA256_HASH_LEN];
 	struct record_list *head, *rl;
-	int c, pcr, fd, have_pcrs = 0;
+	int c, pcr, fd, have_pcrs = 0, pcr10_matched = 0;
 	size_t s;
 	char *pcrbinfile = NULL;
 	char *hashfile = NULL;
@@ -435,14 +465,7 @@ int main(int argc, char *argv[])
 	                        verbose = 1;
 	        }
 	}
-
-	/* read in the whole event log as records of tlvs */
-	head = read_list();
-
-	/* calculate the effective pcr values from the log */
-	for (rl = head; rl != NULL; rl = rl->next)
-		calc_pcrs(rl->record, pcr_sha1, pcr_sha256);
-		
+	
 	/* If sha256 target pcr values are available, read them in */
 	if (pcrbinfile) {
 	        fd = open(pcrbinfile, O_RDONLY);
@@ -453,6 +476,18 @@ int main(int argc, char *argv[])
 	        }
 	}
 	
+	/* read in the whole event log as records of tlvs */
+	head = read_list();
+
+	/* calculate the effective pcr values from the log */
+	for (rl = head; rl != NULL; rl = rl->next) {
+		update_pcrs(rl->record, pcr_sha1, pcr_sha256);
+		pcr = ntohl(*(uint32_t *)(rl->record->pcr->v));
+		if ((pcr == 10) && have_pcrs &&
+		        memcmp(pcr_sha256[10], &pcrs[10 * SHA256_HASH_LEN], SHA256_HASH_LEN) == 0)
+		                pcr10_matched = 1;
+	}
+		
 	/* check and display calculated PCR values */
 	printf("Verifying Event Log Against PCRs\n\n");
 	for (pcr = 0; pcr < NUM_PCRS; pcr++) {
@@ -462,14 +497,21 @@ int main(int argc, char *argv[])
 		        if (memcmp(pcr_sha256[pcr], &pcrs[pcr * SHA256_HASH_LEN],
 		            SHA256_HASH_LEN) == 0)
 		                printf(" MATCHES");
-		        else
-		                printf(" NO MATCH");
+		        else {
+		                if ((pcr == 10) && pcr10_matched)
+		                        printf(" MATCHED EARLIER");
+		                else {
+		                        printf(" NO MATCH \n    looking for ");
+		                        hexdump(&pcrs[pcr * SHA256_HASH_LEN], SHA256_HASH_LEN);
+		                }
+		                        
+		        }
 		}
 		printf("\n");
 	}
 	
-	/* verify each record's content against its digests and RIM hashes */
-	printf("\nVerifying each record against digest or RIM\n\n");
+	/* verify each record's content against its digests, RIM hashes, and signatures*/
+	printf("\nVerifying each record.\n\n");
 	if (hashfile)
 	        have_hashes = read_hashfile(hashfile);
 	
@@ -480,8 +522,6 @@ int main(int argc, char *argv[])
 	                verify_systemd_content(rl->record);
 	        else if (rl->record->content->t == CEL_CONTENT_IMA_TEMPLATE)
 	                verify_ima_template_content(rl->record);
-	                	
-	/* walk the list and check entry signatures against RIM PK - TODO*/	
 		
 	/* walk the list and display records */	
 	if (verbose)

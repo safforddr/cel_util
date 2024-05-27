@@ -56,7 +56,8 @@ void dhextobin(unsigned char *bin, const char *digest) {
                 ch2 = tolower(digest[i*2 + 1]);
                 un1 = (ch1 >= 'a')? (ch1 - 'a' + 10): (ch1 - '0');
                 un2 = (ch2 >= 'a')? (ch2 - 'a' + 10): (ch2 - '0');
-                bin[i] = (un1 << 4) + un2;                
+                bin[i] = (un1 << 4) + un2;
+                //printf("HEX: ch1 %c ch2 %c un1 %d un2 %d bin %02X\n", ch1, ch2, un1, un2, bin[i]);                
         }
 }
 
@@ -94,39 +95,46 @@ void put_systemd_cel(int pcr, const char *hashAlg, const char *digest, const cha
 	tlv_put(CEL_CONTENT_SYSTEMD, strlen(content), (uint8_t *)content);	
 }
 
-/* check leaf objects for needed keys */
+/* get values for needed keys */
 void get_json_value(json_object *jobj, char *key){
+        //enum json_type type;
         
         if(!strncmp(key, "pcr", 3)) {
-                pcr = json_object_get_int(jobj);                 
+                pcr = json_object_get_int(jobj);
+                //printf("Got pcr %d\n", pcr);                 
         } else if(!strncmp(key, "hashAlg", 7)) {
-                hashAlg = json_object_get_string(jobj);           
+                hashAlg = json_object_get_string(jobj);
+                //printf("Got hashAlg %s\n", hashAlg);             
         } else if(!strncmp(key, "digest", 3)) {
-                digest = json_object_get_string(jobj);              
+                digest = json_object_get_string(jobj);
+                //printf("Got digest %s\n", digest);                
         } else if(!strncmp(key, "string", 7)) {
-                content = json_object_get_string(jobj);            
+                content = json_object_get_string(jobj);
+                //printf("Got content string %s\n", content);            
         }
 }
 
 void json_parse_array(json_object *jobj, char *key) {
-      void json_parse(json_object * jobj); 
+      void json_parse(json_object * jobj); /*Forward Declaration*/
       enum json_type type;
 
-      json_object *jarray = jobj;
+      json_object *jarray = jobj; /*Simply get the array*/
       if(key) {
-              jarray = json_object_object_get(jobj, key);
+              jarray = json_object_object_get(jobj, key); /*Getting the array if it is a key value pair*/
       }
 
-      int arraylen = json_object_array_length(jarray);
+      int arraylen = json_object_array_length(jarray); /*Getting the length of the array*/
+      //printf("Array Length: %d\n",arraylen);
       int i;
       json_object * jvalue;
 
       for (i=0; i< arraylen; i++){
-              jvalue = json_object_array_get_idx(jarray, i);
+              jvalue = json_object_array_get_idx(jarray, i); /*Getting the array element at position i*/
               type = json_object_get_type(jvalue);
               if (type == json_type_array) {
                       json_parse_array(jvalue, NULL);
               } else if (type != json_type_object) {
+                      //printf("value[%d]: ",i);
                       get_json_value(jvalue, key);
               } else {
                       json_parse(jvalue);
@@ -138,7 +146,8 @@ void json_parse_array(json_object *jobj, char *key) {
 void json_parse(json_object * jobj) {
         enum json_type type;
         
-        json_object_object_foreach(jobj, key, val) {
+        json_object_object_foreach(jobj, key, val) { /*Passing through every array element*/
+                //printf("KEY: %s\n",key);
                 type = json_object_get_type(val);
                 switch (type) {
                         case json_type_boolean: 
@@ -148,10 +157,12 @@ void json_parse(json_object * jobj) {
                                 get_json_value(val, key);
                                 break; 
                         case json_type_object:
+                                //printf("json_type_object\n");
                                 jobj = json_object_object_get(jobj, key);
                                 json_parse(jobj); 
                                 break;
                         case json_type_array: 
+                                //printf("type: json_type_array\n");
                                 json_parse_array(jobj, key);
                                 break;
                         default:
@@ -166,10 +177,10 @@ int main() {
         size_t r = 0;
         
         
-        /* read systemd tpm2 json events from stdin */
+        // read systemd tpm2 json events from stdin
         while((r = getline(&line, &len, stdin) > 0)) {     
-                /* parse this json line */
-                json_object * jobj = json_tokener_parse(line+1);  // skip weird leading '1e' character
+                // parse this line for pcr, digests.hashAlg, digests.digest, content.string
+                json_object * jobj = json_tokener_parse(line+1);  // skip leading '1e' character
                 if(!jobj)
                         continue;
                 pcr = 0;

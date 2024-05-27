@@ -45,6 +45,7 @@ struct record {
 	uint8_t sha1[SHA1_HASH_LEN];
 	int verified_digests;
 	int verified_rim;
+	int verified_imasig;
 };
 
 struct record_list {
