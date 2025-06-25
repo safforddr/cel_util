@@ -5,7 +5,7 @@
 tpm2_pcrread -o pcrs.bin sha256 >& /dev/null
 cat /sys/kernel/security/tpm0/binary_bios_measurements | ./pcclient_to_cel > pc.cel
 cat /sys/kernel/security/ima/binary_runtime_measurements | ./ima-ng_to_cel > ima.cel
-if [ -f /run/log/systemd/tpm2-measure,log ] ; then
+if [ -f /run/log/systemd/tpm2-measure.log ] ; then
     cat /run/log/systemd/tpm2-measure.log | ./systemd_log_to_cel > systemd.cel
 else
     ./systemd_to_cel > systemd.cel
